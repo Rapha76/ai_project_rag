@@ -1,5 +1,6 @@
 docling
 langchain-community
 langchain-ollama
+langchain-chroma
 chromadb
 watchdog
