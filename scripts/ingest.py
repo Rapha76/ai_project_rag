@@ -22,7 +22,7 @@ else :
         )
         chunks = text_splitter.split_text(text_markdown)
 
-        embedding_model = OllamaEmbeddings(model="llama3")
+        embedding_model = OllamaEmbeddings(model="phi3")
         vector_chroma = Chroma.from_texts(
             texts = chunks,
             embedding= embedding_model,

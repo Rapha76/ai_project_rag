@@ -18,8 +18,8 @@ def charger_moteur():
     if not source_db.exists():
         return None, None
         
-    embedding_model = OllamaEmbeddings(model="llama3")
-    llm = ChatOllama(model="llama3")
+    embedding_model = OllamaEmbeddings(model="phi3", base_url="http://host.docker.internal:11434")
+    llm = ChatOllama(model="phi3", base_url="http://host.docker.internal:11434")
     vector_store = Chroma(
         embedding_function=embedding_model,
         persist_directory=str(source_db),
