@@ -1,0 +1,16 @@
+name: CI Pipeline - Docker Build
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest 
+
+    steps:
+    - name: Récupération du code
+      uses: actions/checkout@v4
+
+    - name: Construction de l'image Docker
+      run: docker build -t projet-rag .
