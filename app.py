@@ -1,63 +1,80 @@
 import streamlit as st
-from pathlib import Path
-from langchain_ollama import OllamaEmbeddings
+import os
+import tempfile
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_chroma import Chroma
-from langchain_ollama import ChatOllama
+from langchain_community.chat_models import ChatOllama
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import PromptTemplate
 
+OLLAMA_URL = "http://host.docker.internal:11434"
+MODEL_NAME = "phi3"
+DB_DIR = "chroma_db"
 
-st.set_page_config(page_title="RAG Local")
+st.set_page_config(page_title="RAG Local", layout="wide")
 st.title("Projet RAG")
-st.write("Posez une question sur les documents internes.")
 
-  
-@st.cache_resource
-def charger_moteur():
-    racine_projet = Path(__file__).parent
-    source_db = racine_projet / "chroma_db"
+with st.sidebar:
+    st.header("Base de données")
     
-    if not source_db.exists():
-        return None, None
-        
-    embedding_model = OllamaEmbeddings(model="phi3", base_url="http://host.docker.internal:11434")
-    llm = ChatOllama(model="phi3", base_url="http://host.docker.internal:11434")
-    vector_store = Chroma(
-        embedding_function=embedding_model,
-        persist_directory=str(source_db),
-    )
-    return vector_store, llm
-
-vector_store, llm = charger_moteur()
-
-if not vector_store:
-    st.error("Base de données introuvable. Veuillez lancer l'ingestion d'abord.")
-    st.stop() 
-
-question = st.chat_input("Ex: Le PDF est-il interactif ?")
-
-if question:
-    st.chat_message("user").write(question)
+    uploaded_files = st.file_uploader("Ajoutez vos PDF ici", type="pdf", accept_multiple_files=True)
     
-    with st.spinner("Recherche dans les documents..."):
-        
-        results = vector_store.similarity_search(question, k=2)
-        
-        contexte_trouve = ""
-        for res in results:
-            contexte_trouve += res.page_content + "\n\n"
+    if st.button("Construction de la base de données") and uploaded_files:
+        with st.spinner("Lecture des documents"):
             
-        prompt_final = f"""
-        Tu es un assistant expert de chez Thales. 
-        Réponds à la question de l'utilisateur EN TE BASANT UNIQUEMENT sur le contexte fourni ci-dessous.
-        Si la réponse n'est pas dans le contexte, dis "Je ne sais pas".
+            documents = []
+            embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
+            
+            for uploaded_file in uploaded_files:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    tmp_file_path = tmp_file.name
+                
+                loader = PyPDFLoader(tmp_file_path)
+                documents.extend(loader.load())
+                os.remove(tmp_file_path)
+            
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            splits = text_splitter.split_documents(documents)
+            
+            Chroma.from_documents(documents=splits, embedding=embedding_model, persist_directory=DB_DIR)
+            
+            st.success("Base de données construite")
+
+if os.path.exists(DB_DIR) and os.listdir(DB_DIR):
+    st.success("La base de données est prête ! Posez vos questions.")
+    
+    embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
+    vector_store = Chroma(persist_directory=DB_DIR, embedding_function=embedding_model)
+    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    
+    llm = ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL)
+    
+    prompt = PromptTemplate(
+        template="""Tu es un assistant utile. Utilise le contexte suivant pour répondre à la question. 
+        Si tu ne connais pas la réponse, dis simplement que tu ne sais pas.
         
-        Contexte :
-        {contexte_trouve}
+        Contexte : {context}
         
-        Question : {question}
+        Question : {input}
         
-        Réponse :
-        """
+        Réponse : """,
+        input_variables=["context", "input"]
+    )
+    
+    combine_docs_chain = create_stuff_documents_chain(llm, prompt)
+    retrieval_chain = create_retrieval_chain(retriever, combine_docs_chain)
+    
+    question = st.chat_input("Posez votre question sur vos documents...")
+    if question:
+        st.chat_message("user").write(question)
         
-        reponse_ia = llm.invoke(prompt_final)
-        
-        st.chat_message("assistant").write(reponse_ia.content)
+        with st.spinner("Réflexion"):
+            response = retrieval_chain.invoke({"input": question})
+            st.chat_message("assistant").write(response["answer"])
+
+else:
+    st.info("Bienvenue ! Veuillez ajouter des documents PDF dans la barre à gauche pour commencer.")
