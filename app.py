@@ -6,8 +6,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_community.chat_models import ChatOllama
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
 OLLAMA_URL = "http://host.docker.internal:11434"
@@ -65,16 +65,23 @@ if os.path.exists(DB_DIR) and os.listdir(DB_DIR):
         input_variables=["context", "input"]
     )
     
-    combine_docs_chain = create_stuff_documents_chain(llm, prompt)
-    retrieval_chain = create_retrieval_chain(retriever, combine_docs_chain)
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+    
+    rag_chain = (
+        {"context": retriever | format_docs, "input": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
     
     question = st.chat_input("Posez votre question sur vos documents...")
     if question:
         st.chat_message("user").write(question)
         
         with st.spinner("Réflexion"):
-            response = retrieval_chain.invoke({"input": question})
-            st.chat_message("assistant").write(response["answer"])
+            response = rag_chain.invoke(question)
+            st.chat_message("assistant").write(response)
 
 else:
     st.info("Bienvenue ! Veuillez ajouter des documents PDF dans la barre à gauche pour commencer.")
