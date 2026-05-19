@@ -17,6 +17,15 @@ DB_DIR = "chroma_db"
 st.set_page_config(page_title="RAG Local", layout="wide")
 st.title("Projet RAG")
 
+@st.cache_resource
+def get_vector_store():
+    # Cette fonction ne s'exécutera qu'une seule fois !
+    embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
+    os.makedirs(DB_DIR, exist_ok=True)
+    return Chroma(persist_directory=DB_DIR, embedding_function=embedding_model)
+
+vector_store = get_vector_store()
+
 with st.sidebar:
     st.header("Base de données")
     
@@ -26,7 +35,6 @@ with st.sidebar:
         with st.spinner("Lecture des documents"):
             
             documents = []
-            embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
             
             for uploaded_file in uploaded_files:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -40,15 +48,18 @@ with st.sidebar:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
             splits = text_splitter.split_documents(documents)
             
-            Chroma.from_documents(documents=splits, embedding=embedding_model, persist_directory=DB_DIR)
+            vector_store.add_documents(splits)
             
             st.success("Base de données construite")
 
-if os.path.exists(DB_DIR) and os.listdir(DB_DIR):
+try:
+    db_is_ready = vector_store._collection.count() > 0
+except:
+    db_is_ready = False
+
+if db_is_ready:
     st.success("La base de données est prête ! Posez vos questions.")
     
-    embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
-    vector_store = Chroma(persist_directory=DB_DIR, embedding_function=embedding_model)
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     
     llm = ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL)
