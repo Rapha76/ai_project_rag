@@ -21,7 +21,7 @@ st.title("Projet RAG")
 @st.cache_resource
 def get_vector_store():
     # Cette fonction ne s'exécutera qu'une seule fois !
-    embedding_model = OllamaEmbeddings(model=MODEL_NAME, base_url=OLLAMA_URL)
+    embedding_model = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_URL)
     os.makedirs(DB_DIR, exist_ok=True)
     return Chroma(persist_directory=DB_DIR, embedding_function=embedding_model)
 
@@ -63,7 +63,7 @@ if db_is_ready:
     
     retriever = vector_store.as_retriever(search_kwargs={"k": 2})
     
-    llm = ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL)
+    llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL)
     
     prompt = PromptTemplate(
         template="""Tu es un assistant utile. Utilise le contexte suivant pour répondre à la question. 
