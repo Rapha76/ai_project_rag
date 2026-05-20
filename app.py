@@ -11,7 +11,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
 OLLAMA_URL = "http://host.docker.internal:11434"
-MODEL_NAME = "phi3"
+CHAT_MODEL = "llama3.2:1b"
+EMBEDDING_MODEL = "nomic-embed-text"
 DB_DIR = "chroma_db"
 
 st.set_page_config(page_title="RAG Local", layout="wide")
@@ -60,7 +61,7 @@ except:
 if db_is_ready:
     st.success("La base de données est prête ! Posez vos questions.")
     
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    retriever = vector_store.as_retriever(search_kwargs={"k": 2})
     
     llm = ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL)
     
@@ -90,9 +91,8 @@ if db_is_ready:
     if question:
         st.chat_message("user").write(question)
         
-        with st.spinner("Réflexion"):
-            response = rag_chain.invoke(question)
-            st.chat_message("assistant").write(response)
+        with st.chat_message("Réflexion"):
+            st.write_stream(rag_chain.stream(question))
 
 else:
     st.info("Bienvenue ! Veuillez ajouter des documents PDF dans la barre à gauche pour commencer.")
